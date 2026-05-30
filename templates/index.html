@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Face Vault</title>
+  <link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="lock-icon">🔒</div>
+      <h1>Face Vault</h1>
+      <p class="subtitle">Apna chehra scan karo — secret folder unlock hoga</p>
+    </div>
+
+    <div class="camera-box">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="canvas"></canvas>
+      <div class="camera-overlay" id="scan-overlay"></div>
+    </div>
+
+    <p class="hint">💡 Achhi roshni mein seedha camera ke saamne baitho</p>
+
+    <div class="btn-row">
+      <button class="btn btn-register" onclick="registerFace()">
+        <span>📸</span> Register
+      </button>
+      <button class="btn btn-unlock" onclick="unlockVault()">
+        <span>🔓</span> Unlock Vault
+      </button>
+    </div>
+
+    <div class="status-box" id="status">
+      <span class="status-icon">⏳</span>
+      <span id="status-text">Camera start ho rahi hai...</span>
+    </div>
+
+    <div class="similarity-bar-wrap" id="sim-wrap" style="display:none">
+      <div class="sim-label">Match Score</div>
+      <div class="sim-bar-bg">
+        <div class="sim-bar-fill" id="sim-bar"></div>
+      </div>
+      <div class="sim-value" id="sim-value"></div>
+    </div>
+
+    <div class="vault" id="vault">
+      <div class="vault-header">
+        <span>🗂</span> Secret Vault
+      </div>
+      <ul id="file-list"></ul>
+    </div>
+  </div>
+
+  <script src="/static/main.js"></script>
+</body>
+</html>
