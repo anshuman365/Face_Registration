@@ -2,6 +2,9 @@ import os
 import io
 import base64
 import numpy as np
+import shutil
+import secrets
+from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, render_template, send_from_directory
 from PIL import Image
 import cv2
@@ -12,6 +15,7 @@ BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR   = os.path.join(BASE_DIR, "face_data")
 SECRET_DIR = os.path.join(BASE_DIR, "secret_vault")
 KNOWN_FILE = os.path.join(DATA_DIR, "known_face.npy")
+KNOWN_BACKUP = os.path.join(SECRET_DIR, "face_backup.npy")
 
 os.makedirs(DATA_DIR,   exist_ok=True)
 os.makedirs(SECRET_DIR, exist_ok=True)
@@ -21,7 +25,7 @@ if not os.path.exists(sample):
     with open(sample, "w") as f:
         f.write("Yeh tumhari secret file hai!\n")
 
-# ── Global error handlers ──────────────────────
+# ── Error handlers ─────────────────────────────
 @app.errorhandler(404)
 def not_found(e):
     return jsonify({"success": False, "message": "Route not found"}), 404
@@ -30,7 +34,23 @@ def not_found(e):
 def server_error(e):
     return jsonify({"success": False, "message": f"Server error: {str(e)}"}), 500
 
-# ── Lazy load InsightFace ──────────────────────
+# ── Session store ──────────────────────────────
+active_sessions = {}
+
+def create_session():
+    token = secrets.token_hex(32)
+    active_sessions[token] = datetime.utcnow() + timedelta(minutes=10)
+    return token
+
+def validate_session(token):
+    if not token or token not in active_sessions:
+        return False
+    if datetime.utcnow() > active_sessions[token]:
+        del active_sessions[token]
+        return False
+    return True
+
+# ── InsightFace lazy load ──────────────────────
 _face_app = None
 
 def get_face_app():
@@ -53,8 +73,8 @@ def decode_image(b64_str):
 
 def get_face_embedding(img_array):
     try:
-        fa   = get_face_app()
-        bgr  = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+        fa    = get_face_app()
+        bgr   = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
         faces = fa.get(bgr)
     except Exception as e:
         return None, f"Model error: {str(e)}"
@@ -97,6 +117,8 @@ def cosine_similarity(a, b):
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-6))
 
 
+# ── Routes ─────────────────────────────────────
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -115,8 +137,13 @@ def register():
         if err:
             return jsonify({"success": False, "message": f"❌ {err}"})
 
+        # Save to face_data/
         np.save(KNOWN_FILE, embedding)
-        return jsonify({"success": True, "message": "✅ Chehra register ho gaya!"})
+
+        # Backup copy to secret_vault/ (download ke liye)
+        shutil.copy2(KNOWN_FILE, KNOWN_BACKUP)
+
+        return jsonify({"success": True, "message": "✅ Chehra register ho gaya! Backup bhi secret vault mein save hua."})
 
     except Exception as e:
         return jsonify({"success": False, "message": f"❌ Server error: {str(e)}"})
@@ -143,12 +170,14 @@ def unlock():
         THRESHOLD  = 0.35
 
         if similarity >= THRESHOLD:
+            token = create_session()
             files = [f for f in os.listdir(SECRET_DIR) if not f.startswith('.')]
             return jsonify({
                 "success":    True,
                 "message":    f"✅ Vault unlock! ({similarity*100:.1f}%)",
                 "files":      files,
-                "similarity": similarity
+                "similarity": similarity,
+                "token":      token
             })
         else:
             return jsonify({
@@ -163,6 +192,9 @@ def unlock():
 
 @app.route('/secret/<filename>')
 def serve_secret(filename):
+    token = request.args.get('token')
+    if not validate_session(token):
+        return jsonify({"success": False, "message": "❌ Unauthorized. Pehle face se unlock karo."}), 403
     safe = os.path.basename(filename)
     return send_from_directory(SECRET_DIR, safe)
 

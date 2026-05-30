@@ -158,3 +158,48 @@ canvas { display: none; }
 }
 #file-list li a { color: var(--blue); text-decoration: none; }
 #file-list li a:hover { text-decoration: underline; }
+
+/* Camera toggle */
+.cam-toggle {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.toggle-btn {
+  flex: 1;
+  padding: 8px;
+  border: 2px solid var(--surface2);
+  background: var(--surface);
+  color: var(--muted);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.toggle-btn.active {
+  border-color: var(--purple);
+  color: var(--purple);
+  background: var(--surface2);
+}
+
+/* Camera label */
+.cam-label {
+  position: absolute;
+  bottom: 8px; left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  font-size: 0.72rem;
+  padding: 2px 10px;
+  border-radius: 99px;
+  pointer-events: none;
+}
+
+/* Download button */
+.dl-btn {
+  float: right;
+  color: var(--green) !important;
+  font-size: 1rem;
+  text-decoration: none;
+}

@@ -8,32 +8,43 @@
 </head>
 <body>
   <div class="container">
+
     <div class="header">
       <div class="lock-icon">🔒</div>
       <h1>Face Vault</h1>
       <p class="subtitle">Apna chehra scan karo — secret folder unlock hoga</p>
     </div>
 
+    <!-- Camera toggle -->
+    <div class="cam-toggle">
+      <button class="toggle-btn active" id="btn-front" onclick="switchCamera('user')">
+        🤳 Front
+      </button>
+      <button class="toggle-btn" id="btn-back" onclick="switchCamera('environment')">
+        📷 Back
+      </button>
+    </div>
+
     <div class="camera-box">
       <video id="video" autoplay playsinline muted></video>
       <canvas id="canvas"></canvas>
       <div class="camera-overlay" id="scan-overlay"></div>
+      <div class="cam-label" id="cam-label">Front Camera</div>
     </div>
 
     <p class="hint">💡 Achhi roshni mein seedha camera ke saamne baitho</p>
 
     <div class="btn-row">
       <button class="btn btn-register" onclick="registerFace()">
-        <span>📸</span> Register
+        📸 Register
       </button>
       <button class="btn btn-unlock" onclick="unlockVault()">
-        <span>🔓</span> Unlock Vault
+        🔓 Unlock Vault
       </button>
     </div>
 
     <div class="status-box" id="status">
-      <span class="status-icon">⏳</span>
-      <span id="status-text">Camera start ho rahi hai...</span>
+      <span id="status-text">⏳ Camera start ho rahi hai...</span>
     </div>
 
     <div class="similarity-bar-wrap" id="sim-wrap" style="display:none">
@@ -45,13 +56,11 @@
     </div>
 
     <div class="vault" id="vault">
-      <div class="vault-header">
-        <span>🗂</span> Secret Vault
-      </div>
+      <div class="vault-header">🗂 Secret Vault</div>
       <ul id="file-list"></ul>
     </div>
-  </div>
 
+  </div>
   <script src="/static/main.js"></script>
 </body>
 </html>
