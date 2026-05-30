@@ -3,6 +3,8 @@ import io
 import base64
 import numpy as np
 from flask import Flask, request, jsonify, render_template, send_from_directory
+from PIL import Image
+import face_recognition
 
 app = Flask(__name__)
 
@@ -17,44 +19,60 @@ os.makedirs(SECRET_DIR, exist_ok=True)
 sample = os.path.join(SECRET_DIR, "secret_note.txt")
 if not os.path.exists(sample):
     with open(sample, "w") as f:
-        f.write("Yeh tumhari secret file hai. Sirf tumhara chehra dekh sakta hai.\n")
+        f.write("Yeh tumhari secret file hai!\n")
 
 
 def decode_image(b64_str):
-    from PIL import Image
     img_bytes = base64.b64decode(b64_str)
     img = Image.open(io.BytesIO(img_bytes)).convert('RGB')
     return np.array(img)
 
 
-def extract_face_vector(img_array):
-    import cv2
-    try:
-        cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-        face_cascade = cv2.CascadeClassifier(cascade_path)
-    except Exception as e:
-        return None, f"OpenCV load error: {e}"
-
-    gray  = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
-    faces = face_cascade.detectMultiScale(
-        gray, scaleFactor=1.1, minNeighbors=5, minSize=(50, 50)
+def get_face_encoding(img_array):
+    """
+    face_recognition 128-dimensional encoding return karta hai.
+    Ye sirf REAL face pe kaam karta hai — cartoons/sketches/photos
+    mein face landmarks detect nahi hote properly.
+    """
+    # Pehle face locations dhundho
+    face_locations = face_recognition.face_locations(
+        img_array,
+        number_of_times_to_upsample=1,
+        model="hog"   # "cnn" more accurate but slow on free tier
     )
 
-    if len(faces) == 0:
-        return None, "Koi chehra detect nahi hua. Seedha camera ke saamne baitho, achhi roshni rakho."
+    if not face_locations:
+        return None, "Koi chehra detect nahi hua. Seedha camera ke saamne baitho."
 
-    x, y, w, h = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)[0]
-    from PIL import Image
-    face_crop    = img_array[y:y+h, x:x+w]
-    face_resized = np.array(Image.fromarray(face_crop).resize((64, 64)))
-    vector       = face_resized.flatten().astype(np.float32)
-    norm         = np.linalg.norm(vector)
-    vector       = vector / (norm + 1e-6)
-    return vector, None
+    if len(face_locations) > 1:
+        return None, "Multiple faces detected. Akele frame mein aao."
+
+    # 128-D encoding
+    encodings = face_recognition.face_encodings(
+        img_array,
+        known_face_locations=face_locations,
+        num_jitters=2   # zyada jitters = zyada accurate
+    )
+
+    if not encodings:
+        return None, "Face encoding fail hua. Phir try karo."
+
+    return encodings[0], None
 
 
-def cosine_similarity(a, b):
-    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-6))
+def get_face_landmarks_score(img_array):
+    """
+    Extra check: landmarks detect hone chahiye (eyes, nose, lips).
+    Cartoons/sketches mein ye properly nahi milte.
+    """
+    landmarks_list = face_recognition.face_landmarks(img_array)
+    if not landmarks_list:
+        return False
+    lm = landmarks_list[0]
+    # Real face mein ye sab hone chahiye
+    required = ['left_eye', 'right_eye', 'nose_tip', 'top_lip', 'bottom_lip']
+    found = sum(1 for part in required if part in lm and len(lm[part]) > 0)
+    return found >= 4
 
 
 @app.route('/')
@@ -68,13 +86,20 @@ def register():
     if not data or 'image' not in data:
         return jsonify({"success": False, "message": "❌ Image nahi mili."})
 
-    img_array    = decode_image(data['image'])
-    vector, err  = extract_face_vector(img_array)
+    img_array = decode_image(data['image'])
 
+    # Landmarks check — cartoon/sketch filter
+    if not get_face_landmarks_score(img_array):
+        return jsonify({
+            "success": False,
+            "message": "❌ Real human face detect nahi hua. Photo ya cartoon se register nahi hoga."
+        })
+
+    encoding, err = get_face_encoding(img_array)
     if err:
         return jsonify({"success": False, "message": f"❌ {err}"})
 
-    np.save(KNOWN_FILE, vector)
+    np.save(KNOWN_FILE, encoding)
     return jsonify({"success": True, "message": "✅ Chehra register ho gaya! Ab Unlock try karo."})
 
 
@@ -87,29 +112,47 @@ def unlock():
     if not data or 'image' not in data:
         return jsonify({"success": False, "message": "❌ Image nahi mili."})
 
-    known_vector = np.load(KNOWN_FILE)
-    img_array    = decode_image(data['image'])
-    vector, err  = extract_face_vector(img_array)
+    known_encoding = np.load(KNOWN_FILE)
+    img_array      = decode_image(data['image'])
 
+    # Step 1 — Landmarks check (cartoon/sketch/photo block)
+    if not get_face_landmarks_score(img_array):
+        return jsonify({
+            "success": False,
+            "message": "❌ Real human face detect nahi hua. Photo/cartoon/sketch se access nahi milega.",
+            "similarity": 0.0
+        })
+
+    # Step 2 — Encoding
+    encoding, err = get_face_encoding(img_array)
     if err:
-        return jsonify({"success": False, "message": f"❌ {err}"})
+        return jsonify({"success": False, "message": f"❌ {err}", "similarity": 0.0})
 
-    similarity = cosine_similarity(known_vector, vector)
-    THRESHOLD  = 0.90
+    # Step 3 — Distance comparison
+    # face_recognition distance: 0.0 = perfect match, 0.6+ = different person
+    distance  = face_recognition.face_distance([known_encoding], encoding)[0]
+    # Convert to similarity percentage (0.6 distance = 0% match for display)
+    similarity = max(0.0, 1.0 - (distance / 0.6))
+    similarity = round(float(similarity), 3)
 
-    if similarity >= THRESHOLD:
+    # Strict threshold — 0.45 distance = same person (tighter than default 0.6)
+    DISTANCE_THRESHOLD = 0.45
+
+    if distance <= DISTANCE_THRESHOLD:
         files = [f for f in os.listdir(SECRET_DIR) if not f.startswith('.')]
         return jsonify({
             "success":    True,
-            "message":    f"✅ Match! Vault unlock ho gaya. ({similarity:.3f})",
+            "message":    f"✅ Match! Vault unlock ho gaya. ({similarity*100:.1f}% match)",
             "files":      files,
-            "similarity": round(similarity, 3)
+            "similarity": similarity,
+            "distance":   round(float(distance), 4)
         })
     else:
         return jsonify({
             "success":    False,
-            "message":    f"❌ Chehra match nahi hua. ({similarity:.3f})",
-            "similarity": round(similarity, 3)
+            "message":    f"❌ Chehra match nahi hua. ({similarity*100:.1f}% match)",
+            "similarity": similarity,
+            "distance":   round(float(distance), 4)
         })
 
 
