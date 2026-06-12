@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Verification Service Test</title>
+    <style>
+        body { font-family: monospace; background: #0f0f1a; color: #cdd6f4; display: flex; justify-content: center; padding: 20px; }
+        .container { max-width: 500px; text-align: center; }
+        video, canvas { border-radius: 12px; border: 2px solid #313244; width: 100%; max-width: 320px; }
+        canvas { display: none; }
+        button { background: #cba6f7; border: none; padding: 10px 20px; margin: 10px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .status { background: #1e1e2e; padding: 10px; border-radius: 8px; margin-top: 15px; }
+        input { padding: 8px; margin: 5px; width: 200px; border-radius: 6px; border: none; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>🔍 Face Verification Service</h2>
+    <p>Test Register / Verify endpoints</p>
+
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+    <div>
+        <button onclick="register()">📸 Register (Student ID)</button>
+        <button onclick="verify()">🔓 Verify (Student ID)</button>
+    </div>
+    <div>
+        <label>Student ID: <input type="number" id="studentId" placeholder="e.g., 13" value="13"></label>
+    </div>
+    <div class="status" id="status">Camera loading...</div>
+    <div id="result"></div>
+</div>
+
+<script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const statusDiv = document.getElementById('status');
+    const resultDiv = document.getElementById('result');
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+        .then(stream => {
+            video.srcObject = stream;
+            statusDiv.innerText = '✅ Camera ready';
+        })
+        .catch(err => statusDiv.innerText = '❌ Camera error: ' + err.message);
+
+    function captureFrame() {
+        canvas.width = video.videoWidth || 320;
+        canvas.height = video.videoHeight || 240;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+    }
+
+    async function register() {
+        const studentId = document.getElementById('studentId').value;
+        if (!studentId) { alert('Enter Student ID'); return; }
+        const img = captureFrame();
+        statusDiv.innerText = 'Registering...';
+        try {
+            const res = await fetch(`/register/${studentId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: img })
+            });
+            const data = await res.json();
+            statusDiv.innerText = data.message;
+            resultDiv.innerText = JSON.stringify(data, null, 2);
+        } catch(e) { statusDiv.innerText = 'Error: ' + e; }
+    }
+
+    async function verify() {
+        const studentId = document.getElementById('studentId').value;
+        if (!studentId) { alert('Enter Student ID'); return; }
+        const img = captureFrame();
+        statusDiv.innerText = 'Verifying...';
+        try {
+            const res = await fetch(`/verify/${studentId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: img })
+            });
+            const data = await res.json();
+            statusDiv.innerText = data.message;
+            resultDiv.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+        } catch(e) { statusDiv.innerText = 'Error: ' + e; }
+    }
+</script>
+</body>
+</html>
